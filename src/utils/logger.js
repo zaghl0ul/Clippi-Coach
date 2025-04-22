@@ -13,3 +13,7 @@ console.error = function(...args) {
     const timestamp = new Date().toISOString();
     originalConsoleError.apply(console, [`[${timestamp}] ERROR:`, ...args]);
 };
+
+// Since this file just modifies the console methods globally, we don't need to export anything
+// but it's good practice to add a default export to avoid linting warnings
+export default {};

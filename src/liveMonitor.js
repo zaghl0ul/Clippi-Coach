@@ -1,10 +1,31 @@
-const { SlpLiveStream, SlpRealTime } = require("@vinceau/slp-realtime");
+// Fix for CommonJS/ESM interoperability using createRequire
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+// Direct require of CommonJS modules
+const { SlpLiveStream, SlpRealTime } = require('@vinceau/slp-realtime');
 
 async function startLiveMonitoring(address, port, onEventCallback) {
     const livestream = new SlpLiveStream();
     const realtime = new SlpRealTime();
 
     try {
+        // Register error handler before attempting connection
+        livestream.connection.on('error', (err) => {
+            console.error(`Slippi relay connection error: ${err.message}`);
+            console.log("Attempting to reconnect automatically...");
+            // The reconnect-core library will handle reconnection attempts
+        });
+
+        // Register disconnect handler
+        livestream.connection.on('disconnect', () => {
+            console.log("Disconnected from Slippi relay. Waiting for reconnection...");
+        });
+
+        // Register reconnect handler
+        livestream.connection.on('reconnect', (attempt) => {
+            console.log(`Reconnection attempt #${attempt}`);
+        });
+
         await livestream.start(address, port);
         console.log("Successfully connected to live stream!");
 
@@ -30,7 +51,9 @@ async function startLiveMonitoring(address, port, onEventCallback) {
 
     } catch (err) {
         console.error("Failed to connect to live stream:", err.message);
+        console.log("Verify that Slippi is running with relay protocol enabled");
+        throw new Error(`Connection failure: ${err.message}`);
     }
 }
 
-module.exports = { startLiveMonitoring };
+export { startLiveMonitoring };

@@ -6,13 +6,19 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
+    "start:file": "node src/alt-index.js",
+    "start:realtime": "node src/realTimeIndex.js",
+    "coach": "node src/enhancedCoach.js",
     "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
     "@slippi/slippi-js": "^1.0.0",
+    "@vinceau/slp-realtime": "^3.0.0",
     "axios": "^0.21.1",
+    "chokidar": "^3.5.3",
     "dotenv": "^10.0.0",
     "fs": "0.0.1-security",
+    "lodash": "^4.17.21",
     "readline": "^1.3.0"
   },
   "devDependencies": {

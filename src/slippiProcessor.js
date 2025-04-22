@@ -1,7 +1,11 @@
 // This file contains functions to read and interpret Slippi files. 
 // It processes the game data, extracts relevant information, and prepares it for analysis and commentary.
 
-const fs = require('fs');
+import fs from 'fs';
+// Use createRequire for CommonJS modules compatibility
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+// Direct require of the CommonJS distribution
 const { SlpFile } = require('@slippi/slippi-js');
 
 // Function to process a Slippi file and extract relevant data
@@ -53,8 +57,4 @@ function getMatchDuration(metadata) {
     return metadata.lastFrame || metadata.duration || 0;
 }
 
-module.exports = {
-    processSlippiFile,
-    extractPlayerStats,
-    getMatchDuration,
-};
+export { processSlippiFile, extractPlayerStats, getMatchDuration };
