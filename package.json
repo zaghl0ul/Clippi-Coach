@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "start:file": "node src/alt-index.js",
     "start:realtime": "node src/realTimeIndex.js",
-    "coach": "node src/enhancedCoach.js",
+    "coach": "node src/enhancedcoach.js",
+    "offline-coach": "node src/enhancedcoach.js",
     "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {

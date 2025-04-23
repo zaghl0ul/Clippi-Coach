@@ -1,66 +1,233 @@
-// This file manages the generation of live commentary during gameplay.
-// It supports a proxy endpoint (e.g., Google Apps Script → OpenAI) and falls back to direct Gemini if needed.
+// src/liveCommentary.js - Updated with OpenAI integration
+import { characterNames } from './utils/slippiUtils.js';
+import { executeOpenAIRequest } from './utils/api/openaiHandler.js';
 
-import axios from 'axios';
+// Commentary style constants
+const COMMENTARY_STYLES = {
+  TECHNICAL: 'technical',  // Frame data, execution quality, optimal strategies
+  HYPE: 'hype',            // Exciting, crowd-pleasing commentary
+  EDUCATIONAL: 'educational', // Explanatory commentary for learning
+  ANALYTICAL: 'analytical'    // In-depth strategic analysis
+};
 
-// Sends batched events to the LLM and logs the commentary
-async function provideLiveCommentary(apiKey, events) {
-    if (!events || events.length === 0) return;
+// Cache for commentary to avoid repetition
+const commentaryCache = new Map();
+const CACHE_EXPIRY = 30000; // 30 seconds
 
-    // Build the commentary prompt
-    const prompt = `
-You are a professional esports commentator watching a live Super Smash Bros. Melee match.
-Here are recent gameplay moments. Provide short, energetic commentary that reacts naturally to the action.
-Keep it exciting, human, and full of insight.
+/**
+ * Generates real-time commentary for Slippi gameplay events
+ * Enhanced with technical depth and advanced game understanding
+ * 
+ * @param {string} apiKey - OpenAI API Key for authentication
+ * @param {Array} events - Gameplay events to comment on
+ * @param {Object} options - Configuration options for commentary
+ * @returns {Promise<string>} - The generated commentary
+ */
+export async function provideLiveCommentary(apiKey, events, options = {}) {
+  if (!events || events.length === 0) return;
 
-Examples:
-- "Marth corners Young Link on the right platform and snags a grab!"
-- "Fox tries to whiff punish but gets shield grabbed."
-- "Player 1 loses center stage after an unsafe nair."
-
-Events:
-${events.join('\n')}
-`;
-
-    const isProxy = apiKey.startsWith('http');
-    let commentary = '';
-
-    try {
-        if (isProxy) {
-            // Call the Apps Script proxy via GET to avoid CORS/403
-            const resp = await axios.get(apiKey, {
-                params: { prompt },
-                headers: { 'Content-Type': 'application/json' }
-            });
-            // Apps Script returns raw OpenAI JSON
-            const data = typeof resp.data === 'string'
-                ? JSON.parse(resp.data)
-                : resp.data;
-            commentary = data.choices?.[0]?.message?.content?.trim() || '';
-
-        } else {
-            // Fallback to direct Gemini API
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key=${apiKey}`;
-            const resp = await axios.post(
-                geminiUrl,
-                { contents: [{ parts: [{ text: prompt }] }] },
-                { headers: { 'Content-Type': 'application/json' } }
-            );
-            commentary = resp.data?.candidates?.[0]?.content?.parts[0]?.text || '';
-        }
-
-        console.log(`🎙️ LIVE COMMENTARY: ${commentary || 'No response.'}`);
-
-    } catch (err) {
-        if (isProxy && err.response?.status === 403) {
-            console.error('🚫 Proxy returned 403. Ensure your Apps Script is deployed as a Web App with "Anyone, even anonymous" access and you are calling the /exec URL via GET.');
-        } else {
-            console.error('❌ Error generating commentary:', err.response?.data?.error?.message || err.message);
-            if (err.response?.data?.error?.details) {
-                console.error('Details:', JSON.stringify(err.response.data.error.details, null, 2));
-            }
-        }
+  const {
+    commentaryStyle = COMMENTARY_STYLES.TECHNICAL,
+    maxLength = 150,
+    playerContext = null,
+    gameState = null,
+    temperature = 0.75
+  } = options;
+  
+  // Generate a cache key based on event content
+  const cacheKey = generateCacheKey(events, commentaryStyle);
+  
+  // Check cache first to avoid repetitive commentary
+  if (commentaryCache.has(cacheKey)) {
+    const cached = commentaryCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_EXPIRY) {
+      console.log('Using cached commentary for similar events');
+      return cached.commentary;
     }
+  }
+
+  // Build structured commentary prompt with technical depth
+  const prompt = buildTechnicalCommentaryPrompt(events, commentaryStyle, playerContext, gameState);
+
+  try {
+    // Use OpenAI for concise, technically accurate commentary
+    const commentary = await executeOpenAIRequest(apiKey, prompt, {
+      model: 'gpt-3.5-turbo',
+      maxTokens: 100, // Keep it concise for real-time commentary
+      temperature, 
+      logRequest: false
+    });
+
+    // Cache the result
+    if (commentary) {
+      commentaryCache.set(cacheKey, {
+        commentary,
+        timestamp: Date.now()
+      });
+      
+      // Trim cache if it grows too large
+      if (commentaryCache.size > 100) {
+        const oldestKey = [...commentaryCache.keys()]
+          .sort((a, b) => commentaryCache.get(a).timestamp - commentaryCache.get(b).timestamp)[0];
+        commentaryCache.delete(oldestKey);
+      }
+    }
+
+    // Log the commentary for development
+    console.log(`🎙️ LIVE COMMENTARY (${commentaryStyle}): ${commentary || 'No response.'}`);
+    return commentary;
+
+  } catch (err) {
+    handleCommentaryError(err);
+    return '';
+  }
 }
 
-export { provideLiveCommentary };
+/**
+ * Builds a technical commentary prompt with advanced game understanding
+ * 
+ * @param {Array} events - Gameplay events to comment on
+ * @param {string} style - Commentary style to use
+ * @param {Object} playerContext - Additional player information
+ * @param {Object} gameState - Current game state information
+ * @returns {string} - Structured prompt for the LLM
+ */
+function buildTechnicalCommentaryPrompt(events, style, playerContext, gameState) {
+  // Parse events into structured format for analysis
+  const parsedEvents = events.map(evt => {
+    try {
+      const event = typeof evt === 'string' ? JSON.parse(evt) : evt;
+      
+      // Enhance event with character names for better context
+      if (event.playerIndex !== undefined && event.playerCharacter) {
+        const charName = typeof event.playerCharacter === 'string' 
+          ? event.playerCharacter
+          : (characterNames[event.playerCharacter] || 'Unknown');
+              
+        event.playerCharacter = charName;
+      }
+      
+      return event;
+    } catch (e) {
+      return { rawEvent: evt };
+    }
+  });
+  
+  // Commentary style instructions
+  const styleInstructions = getStyleInstructions(style);
+  
+  // Add player context if available
+  const playerContextStr = playerContext ? 
+    `\nPlayer Context:\n${JSON.stringify(playerContext, null, 2)}` : '';
+    
+  // Add game state if available
+  const gameStateStr = gameState ?
+    `\nCurrent Game State:\n${JSON.stringify(gameState, null, 2)}` : '';
+  
+  // Build the complete prompt with technical focus
+  return `
+You are a professional Super Smash Bros. Melee commentator with deep technical knowledge of frame data, matchups, and competitive strategy.
+
+${styleInstructions}
+
+Recent gameplay events to commentate:
+${JSON.stringify(parsedEvents, null, 2)}
+${playerContextStr}
+${gameStateStr}
+
+Respond with a single natural-sounding commentary line that would be spoken by a professional commentator. Focus on the most technically interesting or significant aspect of these events.
+`;
+}
+
+/**
+ * Get commentary style-specific instructions
+ * 
+ * @param {string} style - Commentary style
+ * @returns {string} - Style-specific instructions
+ */
+function getStyleInstructions(style) {
+  switch (style) {
+    case COMMENTARY_STYLES.TECHNICAL:
+      return `Your commentary should focus on technical execution details such as:
+- Frame-perfect inputs and their effectiveness
+- L-cancel timing and efficiency
+- Neutral game positioning and stage control
+- Specific combo execution quality
+- DI/SDI quality and defensive options
+- Advanced techniques like wavedashing, shield dropping, etc.
+Use precise technical terminology that competitive players would understand.`;
+        
+    case COMMENTARY_STYLES.HYPE:
+      return `Your commentary should be exciting and energetic:
+- Emphasize impressive moments and highlight exciting gameplay
+- Use dynamic language that conveys the energy of competitive play
+- Focus on the drama and tension of the match
+- Acknowledge particularly impressive technical execution
+Imagine you're commentating for a large tournament crowd.`;
+        
+    case COMMENTARY_STYLES.EDUCATIONAL:
+      return `Your commentary should be educational and help viewers understand what's happening:
+- Explain why certain techniques or decisions are effective
+- Highlight learning opportunities from the gameplay
+- Connect technical execution to strategic outcomes
+- Provide context about matchup-specific interactions
+- Use terminology that helps newer players understand advanced concepts
+Strike a balance between accessibility and technical accuracy.`;
+        
+    case COMMENTARY_STYLES.ANALYTICAL:
+      return `Your commentary should provide deep strategic insights:
+- Analyze player decision-making and adaptations
+- Evaluate risk/reward of observed gameplay choices
+- Predict potential counterplay or adaptation opportunities
+- Compare observed strategies to optimal or meta approaches
+- Contextualize micro-decisions within the broader match strategy
+Focus on the "why" behind gameplay decisions and their effectiveness.`;
+        
+    default:
+      return `Provide natural, insightful commentary that blends technical analysis with engaging delivery.`;
+  }
+}
+
+/**
+ * Generates a cache key for commentary to prevent repetition
+ * 
+ * @param {Array} events - Events to comment on
+ * @param {string} style - Commentary style
+ * @returns {string} - Cache key
+ */
+function generateCacheKey(events, style) {
+  try {
+    // Extract essential information for caching
+    const essentialData = events.map(evt => {
+      const event = typeof evt === 'string' ? JSON.parse(evt) : evt;
+      return {
+        type: event.type,
+        playerIndex: event.playerIndex,
+        // Only include core event-specific fields
+        ...(event.type === 'combo' ? { moves: event.moves, damage: event.damage } : {}),
+        ...(event.type === 'stockLost' ? { stocksLost: event.stocksLost, remainingStocks: event.remainingStocks } : {})
+      };
+    });
+    
+    // Combine with style for unique key
+    return `${style}:${JSON.stringify(essentialData)}`;
+  } catch (e) {
+    // Fallback for any parsing issues
+    return `${style}:${Date.now()}`;
+  }
+}
+
+/**
+ * Handle API errors with appropriate logging
+ * 
+ * @param {Error} err - The error object
+ */
+function handleCommentaryError(err) {
+  console.error('❌ Error generating commentary:', err.message);
+  if (err.response?.data) {
+    console.error('Error details:', JSON.stringify(err.response.data, null, 2));
+  }
+}
+
+// Export the commentary style constants for use in other modules
+export const CommentaryStyles = COMMENTARY_STYLES;

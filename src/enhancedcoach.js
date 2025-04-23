@@ -17,8 +17,62 @@ import { getConfig } from './utils/configManager.js';
 import { characterNames } from './utils/slippiUtils.js';
 import './utils/logger.js';
 
-// Event throttling delay
-const EVENT_THRESHOLD = 3000; // ms between events
+// Hierarchical event classification with differential throttling
+const EVENT_PRIORITIES = {
+  STOCK_LOSS: {
+    threshold: 1000, // ms - high priority event
+    lastTriggered: 0
+  },
+  SIGNIFICANT_COMBO: { // 4+ hit combos
+    threshold: 1500,
+    lastTriggered: 0
+  },
+  MINOR_COMBO: { // 2-3 hit combos
+    threshold: 2500,
+    lastTriggered: 0
+  },
+  NEUTRAL_EXCHANGE: { // position changes, etc.
+    threshold: 5000,
+    lastTriggered: 0
+  },
+  FRAME_UPDATE: { // periodic frame updates
+    threshold: 10000,
+    lastTriggered: 0
+  }
+};
+
+// Melee action states of interest for advanced detection
+const ACTION_STATES = {
+  // Techs
+  TECH_START: 0xC7,
+  TECH_ROLL_LEFT: 0xC9,
+  TECH_ROLL_RIGHT: 0xCA,
+  
+  // Recoveries
+  FIRE_FOX_GROUND: 0x159,
+  FIRE_FOX_AIR: 0x15A,
+  UP_B_GROUND: 0x15B,
+  UP_B_AIR: 0x15C,
+  
+  // Common states
+  GRAB: 0xD4,
+  DASH: 0x14,
+  DASH_ATTACK: 0x15,
+  SHIELD: 0xB3,
+  SHIELD_BREAK: 0xB6,
+  
+  // Aerials
+  NAIR: 0x41,
+  FAIR: 0x42,
+  BAIR: 0x43,
+  UAIR: 0x44,
+  DAIR: 0x45,
+  FALL: 0x1D  // Post-aerial state
+};
+
+// Track pending events for batched processing
+const PENDING_EVENTS_LIMIT = 3;
+const BATCH_PROCESSING_INTERVAL = 1500; // ms
 
 /**
  * Enhanced Slippi Coach with robust file detection
@@ -33,11 +87,15 @@ class EnhancedSlippiCoach {
     this.gameByPath = {};
     this.watcher = null;
     this.isMonitoring = false;
-    this.lastEventTime = 0;
     
     // Game state tracking
     this.activeGames = new Set();
     this.completedGames = new Set();
+    
+    // Event buffering for batched processing
+    this.pendingEvents = {};
+    this.eventProcessorInterval = null;
+    this.previousFrames = {}; // Store previous frames for state transition detection
   }
   
   _getDefaultSlippiDirectory() {
@@ -53,6 +111,107 @@ class EnhancedSlippiCoach {
         return path.join(homeDir, '.config', 'Slippi');
       default:
         return path.join(homeDir, 'Slippi');
+    }
+  }
+  
+  /**
+   * Check if a specific event type can be triggered based on its throttling threshold
+   * @param {string} eventType The type of event to check
+   * @param {string} filePath The path to the game file (for game-specific throttling)
+   * @returns {boolean} Whether the event can be triggered
+   */
+  _canTriggerEventType(eventType, filePath) {
+    const now = Date.now();
+    const eventConfig = EVENT_PRIORITIES[eventType];
+    
+    if (!eventConfig) {
+      console.error(`Unknown event type: ${eventType}`);
+      return false;
+    }
+    
+    // Get the game-specific last triggered time
+    const gameEventKey = `${filePath}_${eventType}`;
+    const lastTriggered = this.gameByPath[filePath]?.state?.lastEventTimes?.[eventType] || 0;
+    
+    if (now - lastTriggered < eventConfig.threshold) {
+      return false;
+    }
+    
+    // Update last triggered time for this event type
+    if (this.gameByPath[filePath]?.state) {
+      if (!this.gameByPath[filePath].state.lastEventTimes) {
+        this.gameByPath[filePath].state.lastEventTimes = {};
+      }
+      this.gameByPath[filePath].state.lastEventTimes[eventType] = now;
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Add an event to the pending events queue for this game
+   * @param {string} filePath Path to the game file
+   * @param {object} event Event data to add
+   */
+  _addPendingEvent(filePath, event) {
+    if (!this.pendingEvents[filePath]) {
+      this.pendingEvents[filePath] = [];
+    }
+    
+    this.pendingEvents[filePath].push(event);
+    
+    // Start event processor interval if not already running
+    if (!this.eventProcessorInterval) {
+      this.eventProcessorInterval = setInterval(() => this._processPendingEvents(), BATCH_PROCESSING_INTERVAL);
+    }
+  }
+  
+  /**
+   * Process pending events from all active games
+   */
+  async _processPendingEvents() {
+    for (const filePath of Object.keys(this.pendingEvents)) {
+      const events = this.pendingEvents[filePath] || [];
+      if (events.length === 0) continue;
+      
+      const gameState = this.gameByPath[filePath]?.state;
+      if (!gameState) continue;
+      
+      // Take up to N events for processing
+      const eventsToProcess = events.splice(0, PENDING_EVENTS_LIMIT);
+      if (eventsToProcess.length > 0) {
+        try {
+          // Build a comprehensive game context to pass with events
+          const contextData = {
+            players: gameState.players || [],
+            stocks: gameState.lastStockCounts || [],
+            percent: [], // Will populate from latest frame data
+            frame: gameState.latestFrameProcessed || 0,
+            gameTime: Math.floor((gameState.latestFrameProcessed || 0) / 60),
+            stageId: gameState.settings?.stageId
+          };
+          
+          // Extract latest percent data for all players if available
+          if (this.previousFrames[filePath] && this.previousFrames[filePath].players) {
+            contextData.percent = this.previousFrames[filePath].players.map(player => 
+              player?.post?.percent || 0
+            );
+          }
+          
+          // Process with template-based commentary system
+          // No API dependency - purely deterministic output
+          await provideLiveCommentary(null, eventsToProcess, contextData);
+        } catch (err) {
+          console.error(`Error processing events for ${filePath}:`, err.message);
+        }
+      }
+    }
+    
+    // If no more pending events in any game, clear the interval
+    const hasPendingEvents = Object.values(this.pendingEvents).some(events => events.length > 0);
+    if (!hasPendingEvents && this.eventProcessorInterval) {
+      clearInterval(this.eventProcessorInterval);
+      this.eventProcessorInterval = null;
     }
   }
   
@@ -104,6 +263,12 @@ class EnhancedSlippiCoach {
       this.watcher.close();
       this.watcher = null;
     }
+    
+    if (this.eventProcessorInterval) {
+      clearInterval(this.eventProcessorInterval);
+      this.eventProcessorInterval = null;
+    }
+    
     this.isMonitoring = false;
     console.log("Enhanced Slippi Coach stopped");
   }
@@ -138,7 +303,9 @@ class EnhancedSlippiCoach {
           players: [],
           stockEvents: [],
           comboEvents: [],
-          lastStockCounts: [4, 4, 4, 4]
+          lastStockCounts: [4, 4, 4, 4],
+          lastEventTimes: {},    // Track throttling by event type
+          pendingCommentary: []  // Buffer for pending commentary events
         };
         
         // Store in our tracking map
@@ -146,6 +313,9 @@ class EnhancedSlippiCoach {
           game,
           state: gameState
         };
+        
+        // Initialize pending events for this game
+        this.pendingEvents[filePath] = [];
       }
       
       // Get current game data
@@ -177,6 +347,14 @@ class EnhancedSlippiCoach {
       
       // Process frame data if game has started
       if (gameState.settings && latestFrame && latestFrame.frame > gameState.latestFrameProcessed) {
+        // Detect state transitions between frames
+        if (gameState.latestFrameProcessed > 0) {
+          this._detectStateTransitions(filePath, latestFrame);
+        }
+        
+        // Store previous frame for next comparison
+        this.previousFrames[filePath] = latestFrame;
+        
         this._processFrameData(filePath, latestFrame);
         gameState.latestFrameProcessed = latestFrame.frame;
       }
@@ -194,6 +372,91 @@ class EnhancedSlippiCoach {
         console.error(`Error processing ${filePath}: ${err.message}`);
       }
     }
+  }
+  
+  /**
+   * Detect state transitions between frames for deeper commentary
+   * @param {string} filePath Path to the game file
+   * @param {object} currentFrame Current frame data
+   */
+  _detectStateTransitions(filePath, currentFrame) {
+    const previousFrame = this.previousFrames[filePath];
+    if (!previousFrame || !previousFrame.players) return;
+    
+    // For each player, detect meaningful state changes
+    currentFrame.players.forEach((player, playerIndex) => {
+      if (!previousFrame.players[playerIndex] || !player.post || !previousFrame.players[playerIndex].post) return;
+      
+      const prevState = previousFrame.players[playerIndex].post.actionStateId;
+      const currentState = player.post.actionStateId;
+      
+      // Only process if state changed
+      if (prevState !== currentState) {
+        // Tech detection
+        if ([ACTION_STATES.TECH_START, ACTION_STATES.TECH_ROLL_LEFT, ACTION_STATES.TECH_ROLL_RIGHT].includes(currentState)) {
+          if (this._canTriggerEventType('NEUTRAL_EXCHANGE', filePath)) {
+            const techType = currentState === ACTION_STATES.TECH_START ? 'in-place' : 
+                            currentState === ACTION_STATES.TECH_ROLL_LEFT ? 'roll left' : 'roll right';
+            
+            this._addPendingEvent(filePath, {
+              type: "actionState",
+              subType: "tech",
+              playerIndex,
+              frame: currentFrame.frame,
+              details: { techType }
+            });
+          }
+        }
+        
+        // Shield/grab detection
+        if (currentState === ACTION_STATES.SHIELD || currentState === ACTION_STATES.GRAB) {
+          if (this._canTriggerEventType('NEUTRAL_EXCHANGE', filePath)) {
+            this._addPendingEvent(filePath, {
+              type: "actionState",
+              subType: currentState === ACTION_STATES.SHIELD ? "shield" : "grab",
+              playerIndex,
+              frame: currentFrame.frame
+            });
+          }
+        }
+        
+        // Recovery detection
+        if ([ACTION_STATES.FIRE_FOX_AIR, ACTION_STATES.UP_B_AIR].includes(currentState)) {
+          if (this._canTriggerEventType('NEUTRAL_EXCHANGE', filePath)) {
+            this._addPendingEvent(filePath, {
+              type: "actionState",
+              subType: "recovery",
+              playerIndex,
+              frame: currentFrame.frame
+            });
+          }
+        }
+        
+        // Post-aerial landing
+        if (currentState === ACTION_STATES.FALL && 
+            [ACTION_STATES.NAIR, ACTION_STATES.FAIR, ACTION_STATES.BAIR, 
+             ACTION_STATES.UAIR, ACTION_STATES.DAIR].includes(prevState)) {
+          
+          const aerialMap = {
+            [ACTION_STATES.NAIR]: 'neutral air',
+            [ACTION_STATES.FAIR]: 'forward air', 
+            [ACTION_STATES.BAIR]: 'back air',
+            [ACTION_STATES.UAIR]: 'up air', 
+            [ACTION_STATES.DAIR]: 'down air'
+          };
+          
+          if (this._canTriggerEventType('NEUTRAL_EXCHANGE', filePath)) {
+            this._addPendingEvent(filePath, {
+              type: "actionState",
+              subType: "aerial",
+              playerIndex,
+              frame: currentFrame.frame,
+              details: { aerial: aerialMap[prevState] || 'aerial' }
+            });
+          }
+        }
+      }
+    });
   }
   
   /**
@@ -221,8 +484,11 @@ class EnhancedSlippiCoach {
       // Remove from active games
       this.activeGames.delete(filePath);
       
-      // Clean up resources
-      // We keep it in gameByPath to allow final processing
+      // Clean up buffered events
+      delete this.pendingEvents[filePath];
+      delete this.previousFrames[filePath];
+      
+      // Keep it in gameByPath to allow final processing
     }
   }
   
@@ -245,6 +511,16 @@ class EnhancedSlippiCoach {
         const character = characterNames[characterId] || 'Unknown';
         console.log(`Player ${player.port}: ${character}`);
       });
+      
+      // Generate a game start commentary event
+      const matchupEvent = {
+        type: "gameStart",
+        matchup: settings.players.map(p => characterNames[p.characterId] || 'Unknown'),
+        stage: settings.stageId,
+        frame: 0
+      };
+      
+      this._addPendingEvent(filePath, matchupEvent);
     }
     
     // Reset tracking data for this game
@@ -252,6 +528,10 @@ class EnhancedSlippiCoach {
     gameState.stockEvents = [];
     gameState.comboEvents = [];
     gameState.lastStockCounts = [4, 4, 4, 4];
+    gameState.lastEventTimes = {};
+    
+    // Initialize frame buffer
+    this.previousFrames[filePath] = null;
   }
   
   /**
@@ -265,20 +545,33 @@ class EnhancedSlippiCoach {
     // Skip if no players in frame (early or invalid frames)
     if (!latestFrame.players) return;
     
-    // Display significant frame updates (about 1 second of gameplay)
-    if (latestFrame.frame % 60 === 0) {
-      console.log(`Frame update: ${latestFrame.frame}`);
+    // Generate frame update commentary events (every ~5 seconds)
+    if (latestFrame.frame % 300 === 0 && this._canTriggerEventType('FRAME_UPDATE', filePath)) {
+      const frameUpdateEvent = {
+        type: "frameUpdate",
+        frame: latestFrame.frame,
+        players: {}
+      };
       
       // Display current percentages and stocks
       _.forEach(gameState.players, (player) => {
         const frameData = _.get(latestFrame, ["players", player.index]);
         if (!frameData) return;
         
+        const percent = frameData.post.percent.toFixed(1);
+        const stocks = frameData.post.stocksRemaining;
+        
         console.log(
-          `[Port ${player.port}] ${frameData.post.percent.toFixed(1)}% | ` + 
-          `${frameData.post.stocksRemaining} stocks`
+          `[Port ${player.port}] ${percent}% | ${stocks} stocks`
         );
+        
+        frameUpdateEvent.players[player.index] = {
+          percent: parseFloat(percent),
+          stocks
+        };
       });
+      
+      this._addPendingEvent(filePath, frameUpdateEvent);
     }
     
     // Check for stock changes
@@ -328,20 +621,17 @@ class EnhancedSlippiCoach {
    * @param {number} stocksLost Number of stocks lost
    * @param {object} frame Frame data
    */
-  async _handleStockLost(filePath, playerIndex, stocksLost, frame) {
-    const now = Date.now();
+  _handleStockLost(filePath, playerIndex, stocksLost, frame) {
     const gameState = this.gameByPath[filePath].state;
     
-    // Throttle events to avoid excessive processing
-    if (now - this.lastEventTime < EVENT_THRESHOLD) {
+    // Stock loss is always high priority - use dedicated throttling
+    if (!this._canTriggerEventType('STOCK_LOSS', filePath)) {
       return;
     }
     
-    this.lastEventTime = now;
-    
     // Record the stock lost event
     const event = {
-      time: now,
+      time: Date.now(),
       frame: frame.frame,
       playerIndex,
       stocksLost,
@@ -357,20 +647,15 @@ class EnhancedSlippiCoach {
     
     console.log(`${playerName} lost a stock! Remaining stocks: ${gameState.lastStockCounts[playerIndex]}`);
     
-    // Generate live commentary for significant events
-    try {
-      const eventData = JSON.stringify({
-        type: "stockLost",
-        playerIndex,
-        stocksLost,
-        remainingStocks: gameState.lastStockCounts[playerIndex],
-        playerCharacter: playerData?.character || "Unknown"
-      });
-      
-      await provideLiveCommentary(this.apiKey, [eventData]);
-    } catch (err) {
-      console.error("Failed to generate commentary:", err.message);
-    }
+    // Generate live commentary for stock loss event
+    this._addPendingEvent(filePath, {
+      type: "stockLost",
+      playerIndex,
+      stocksLost,
+      remainingStocks: gameState.lastStockCounts[playerIndex],
+      playerCharacter: playerData?.character || "Unknown",
+      frame: frame.frame
+    });
   }
   
   /**
@@ -380,67 +665,66 @@ class EnhancedSlippiCoach {
    */
   _processNewCombos(filePath, combos) {
     if (!combos || combos.length === 0) return;
-
+    
     const gameState = this.gameByPath[filePath].state;
-
-    // Find combos we haven't processed yet
+    
+    // Find combos we haven't processed yet - lowered threshold to 2+ hits for more commentary
     const newCombos = combos.filter(combo => 
-        combo.moves && 
-        combo.moves.length >= 3 && // Only consider "real" combos with at least 3 moves
-        !gameState.comboEvents.some(existingCombo => 
-            existingCombo.playerIndex === combo.playerIndex && 
-            existingCombo.startFrame === combo.startFrame
-        )
+      combo.moves && 
+      combo.moves.length >= 2 && 
+      !gameState.comboEvents.some(existingCombo => 
+        existingCombo.playerIndex === combo.playerIndex && 
+        existingCombo.startFrame === combo.startFrame
+      )
     );
-
+    
     // Process each new combo
-    newCombos.forEach(async combo => {
-        const now = Date.now();
-
-        // Throttle events to avoid excessive processing
-        if (now - this.lastEventTime < EVENT_THRESHOLD) {
-            return;
-        }
-
-        this.lastEventTime = now;
-
-        // Calculate percent if undefined
-        if (combo.percent === undefined) {
-            combo.percent = combo.endPercent - combo.startPercent;
-        }
-
-        // Record the combo event
-        gameState.comboEvents.push({
-            playerIndex: combo.playerIndex,
-            startFrame: combo.startFrame,
-            endFrame: combo.endFrame,
-            moves: combo.moves.length,
-            damage: combo.percent
-        });
-
-        const playerData = gameState.players[combo.playerIndex];
-        const attackerName = playerData ? 
-            `Player ${playerData.port} (${playerData.character})` : 
-            `Player ${combo.playerIndex + 1}`;
-
-        console.log(`${attackerName} performed a ${combo.moves.length}-hit combo for ${combo.percent.toFixed(1)}% damage!`);
-
-        // Generate live commentary for significant combos
-        try {
-            const eventData = JSON.stringify({
-                type: "combo",
-                playerIndex: combo.playerIndex,
-                moves: combo.moves.length,
-                damage: combo.percent,
-                playerCharacter: playerData?.character || "Unknown"
-            });
-
-            await provideLiveCommentary(this.apiKey, [eventData]);
-        } catch (err) {
-            console.error("Failed to generate commentary:", err.message);
-        }
+    newCombos.forEach(combo => {
+      // Calculate percent if undefined
+      if (combo.percent === undefined) {
+        combo.percent = combo.endPercent - combo.startPercent;
+      }
+      
+      // Record the combo event
+      gameState.comboEvents.push({
+        playerIndex: combo.playerIndex,
+        startFrame: combo.startFrame,
+        endFrame: combo.endFrame,
+        moves: combo.moves.length,
+        damage: combo.percent
+      });
+      
+      const playerData = gameState.players[combo.playerIndex];
+      const attackerName = playerData ? 
+        `Player ${playerData.port} (${playerData.character})` : 
+        `Player ${combo.playerIndex + 1}`;
+      
+      // Categorize combo by size for appropriate throttling
+      const comboType = combo.moves.length >= 4 ? 'SIGNIFICANT_COMBO' : 'MINOR_COMBO';
+      
+      // Skip if throttled for this combo type
+      if (!this._canTriggerEventType(comboType, filePath)) {
+        return;
+      }
+      
+      console.log(`${attackerName} performed a ${combo.moves.length}-hit combo for ${combo.percent.toFixed(1)}% damage!`);
+      
+      // Generate structured combo data for commentary
+      const comboData = {
+        type: "combo",
+        playerIndex: combo.playerIndex,
+        moves: combo.moves.length,
+        damage: combo.percent,
+        playerCharacter: playerData?.character || "Unknown",
+        startFrame: combo.startFrame,
+        endFrame: combo.endFrame,
+        moveTypes: combo.moves.map(m => m.moveId).join(',')
+      };
+      
+      // Add to pending events queue for batched processing
+      this._addPendingEvent(filePath, comboData);
     });
-}
+  }
   
   /**
    * Handle game end event
@@ -460,6 +744,17 @@ class EnhancedSlippiCoach {
     const endMessage = _.get(endTypes, gameEnd.gameEndMethod) || "Unknown";
     const lrasText = gameEnd.gameEndMethod === 7 ? ` | Quitter Index: ${gameEnd.lrasInitiatorIndex}` : "";
     console.log(`End Type: ${endMessage}${lrasText}`);
+    
+    // Add game end event to queue
+    const gameState = this.gameByPath[filePath].state;
+    if (gameState && gameState.players) {
+      this._addPendingEvent(filePath, {
+        type: "gameEnd",
+        endType: endMessage,
+        lrasQuitter: gameEnd.gameEndMethod === 7 ? gameEnd.lrasInitiatorIndex : undefined,
+        frame: gameState.latestFrameProcessed
+      });
+    }
     
     // Generate game analysis
     this._generateGameAnalysis(filePath);
