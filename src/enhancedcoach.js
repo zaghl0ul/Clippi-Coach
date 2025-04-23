@@ -3,6 +3,16 @@ import { createRequire } from 'module';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const apiKey = process.env.API_KEY;
+const endpoint = process.env.LM_STUDIO_ENDPOINT;
+
+if (!apiKey || !endpoint) {
+  throw new Error('No valid API key or LLM configuration found.');
+}
+
 
 // Import lodash for functional utilities
 const require = createRequire(import.meta.url);
@@ -820,7 +830,7 @@ class EnhancedSlippiCoach {
     // Generate AI coaching advice
     try {
       console.log("\nGenerating coaching advice...");
-      const advice = await generateCoachingAdvice(this.apiKey, matchData);
+      const advice = await generateCoachingAdvice('local', matchData); // Use 'local' for the API key
       console.log("\n===== COACHING ADVICE =====");
       console.log(advice);
       console.log("===========================\n");

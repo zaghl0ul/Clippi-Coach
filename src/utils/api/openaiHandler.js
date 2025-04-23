@@ -12,7 +12,7 @@ import axios from 'axios';
 export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
   // Default parameters optimized for technical Slippi analysis
   const {
-    model = 'gpt-3.5-turbo', // Can be upgraded to gpt-4 for more advanced analysis
+    model = 'meta-llama-3.1-70b-instruct', // Can be upgraded to gpt-4 for more advanced analysis
     maxTokens = 1024,
     temperature = 0.7,
     topP = 1.0,
@@ -70,7 +70,7 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
     // Extract content using standard OpenAI response format
     // This works for both OpenAI and LM Studio's compatible API
     if (response.data?.choices && response.data.choices.length > 0) {
-      return response.data.choices[0].message.content;
+      return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
     } else {
       console.error(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Unexpected response structure:`, JSON.stringify(response.data, null, 2));
       return 'Unable to generate content due to unexpected API response format.';

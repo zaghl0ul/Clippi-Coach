@@ -35,10 +35,8 @@ async function testOpenAIIntegration() {
   try {
     console.time("Request duration");
     const result = await executeOpenAIRequest(apiKey, prompt, {
-      model: 'gpt-4.1',
+      model: 'meta-llama-3.1-70b-instruct', // Update to your local LLM model
       maxTokens: 500,
-      temperature: 0.7,
-      logRequest: true
     });
     console.timeEnd("Request duration");
     

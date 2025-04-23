@@ -68,7 +68,7 @@ Provide insightful, technical commentary on these events, highlighting noteworth
   try {
     // Use OpenAI for enhanced commentary
     return executeOpenAIRequest(apiKey, fullPrompt, {
-      model: 'gpt-3.5-turbo', // Can upgrade to gpt-4 for more technical depth
+      model: 'meta-llama-3.1-70b-instruct', // Can upgrade to gpt-4 for more technical depth
       maxTokens,
       temperature,
       logRequest: true
@@ -123,7 +123,7 @@ For each insight, provide specific, actionable advice with frame data where rele
   try {
     // Use OpenAI for technical coaching
     return executeOpenAIRequest(apiKey, coachingPrompt, {
-      model: 'gpt-3.5-turbo',
+      model: 'meta-llama-3.1-70b-instruct',
       maxTokens,
       temperature,
       logRequest: true

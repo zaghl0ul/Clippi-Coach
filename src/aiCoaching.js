@@ -1,6 +1,10 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 // src/aicoaching.js - Updated with OpenAI integration
 import { characterNames } from './utils/slippiUtils.js';
 import { executeOpenAIRequest } from './utils/api/openaiHandler.js';
+import axios from 'axios';
 
 /**
  * Generates comprehensive coaching advice using OpenAI
@@ -10,24 +14,30 @@ import { executeOpenAIRequest } from './utils/api/openaiHandler.js';
  * @returns {Promise<string>} - The generated coaching advice
  */
 export async function generateCoachingAdvice(apiKey, matchData) {
-  // Generate technical coaching prompt
-  const prompt = createAdvancedCoachingPrompt(matchData);
-  
-  try {
-    // Use OpenAI for coaching generation
-    return executeOpenAIRequest(apiKey, prompt, {
-      model: 'gpt-4.1',
-      maxTokens: 1500, // Appropriate for detailed coaching advice
-      temperature: 0.7,
-      logRequest: true
-    });
-  } catch (error) {
-    console.error('Error generating coaching advice:', error.message);
-    if (error.response) {
-      console.error('API error details:', JSON.stringify(error.response.data, null, 2));
+    const prompt = createAdvancedCoachingPrompt(matchData);
+
+    try {
+        if (apiKey === 'local') {
+            // Use the local LLM
+            const response = await axios.post(`${process.env.LM_STUDIO_ENDPOINT}/v1/chat/completions`, {
+                model: 'meta-llama-3.1-70b-instruct',
+                messages: [
+                    { role: 'system', content: 'You are an elite-level Super Smash Bros. Melee coach...' },
+                    { role: 'user', content: prompt }
+                ],
+                max_tokens: 1500,
+                temperature: 0.7
+            });
+            return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
+.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
+
+        } else {
+            throw new Error('No valid API key or LLM configuration found.');
+        }
+    } catch (error) {
+        console.error('[LOCAL_LLM] Error generating coaching advice:', error.message);
+        throw new Error('Local LLM request failed');
     }
-    return `Failed to generate coaching advice: ${error.message}`;
-  }
 }
 
 /**

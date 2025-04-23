@@ -23,7 +23,7 @@ const CACHE_EXPIRY = 30000; // 30 seconds
  * @param {Object} options - Configuration options for commentary
  * @returns {Promise<string>} - The generated commentary
  */
-export async function provideLiveCommentary(apiKey, events, options = {}) {
+export async function provideLiveCommentary(apiKey, events, options) {
   if (!events || events.length === 0) return;
 
   const {
@@ -33,10 +33,10 @@ export async function provideLiveCommentary(apiKey, events, options = {}) {
     gameState = null,
     temperature = 0.75
   } = options;
-  
+
   // Generate a cache key based on event content
   const cacheKey = generateCacheKey(events, commentaryStyle);
-  
+
   // Check cache first to avoid repetitive commentary
   if (commentaryCache.has(cacheKey)) {
     const cached = commentaryCache.get(cacheKey);
@@ -50,9 +50,33 @@ export async function provideLiveCommentary(apiKey, events, options = {}) {
   const prompt = buildTechnicalCommentaryPrompt(events, commentaryStyle, playerContext, gameState);
 
   try {
+    if (apiKey === 'local') {
+      try {
+        const response = await axios.post(`${lmStudioEndpoint}/v1/chat/completions`, {
+          model: "meta-llama-3.1-70b-instruct",
+          messages: [
+            { role: "system", content: "You are a professional Melee coach." },
+            { role: "user", content: prompt }
+          ],
+          max_tokens: maxLength,
+          temperature
+        });
+        
+        // Return the actual chat response content
+        return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
+.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
+        
+      } catch (err) {
+        console.error('[LOCAL_LLM] Error generating commentary:', err.message);
+        throw new Error('Local LLM request failed');
+      }
+    }
+
+    throw new Error('No valid API key or LLM configuration found.');
+
     // Use OpenAI for concise, technically accurate commentary
     const commentary = await executeOpenAIRequest(apiKey, prompt, {
-      model: 'gpt-3.5-turbo',
+      model: 'meta-llama-3.1-70b-instruct',
       maxTokens: 100, // Keep it concise for real-time commentary
       temperature, 
       logRequest: false
@@ -231,3 +255,27 @@ function handleCommentaryError(err) {
 
 // Export the commentary style constants for use in other modules
 export const CommentaryStyles = COMMENTARY_STYLES;
+
+// filepath: c:\Users\blood\Desktop\coach clippi\src\enhancedCoach.js
+async function processCommentary(contextData) {
+    const eventsToProcess = contextData.events || []; // Ensure events are initialized
+    if (eventsToProcess.length === 0) {
+        console.warn("No events to process for commentary.");
+        return;
+    }
+
+    await provideLiveCommentary(null, eventsToProcess, contextData);
+}
+
+async function main() {
+    const contextData = {
+        events: [], // Replace with actual events if available
+        gameState: {}, // Replace with actual game state if available
+    };
+
+    await processCommentary(contextData);
+}
+
+main().catch(err => {
+    console.error('❌ Error in main function:', err.message);
+});
