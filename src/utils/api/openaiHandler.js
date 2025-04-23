@@ -12,7 +12,7 @@ import axios from 'axios';
 export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
   // Default parameters optimized for technical Slippi analysis
   const {
-    model = 'meta-llama-3.1-70b-instruct', // Can be upgraded to gpt-4 for more advanced analysis
+    model = 'gpt-3.5-turbo', // Can be upgraded to gpt-4 for more advanced analysis
     maxTokens = 1024,
     temperature = 0.7,
     topP = 1.0,
@@ -28,8 +28,10 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
   
   // Set up API endpoint based on local or remote
   const apiEndpoint = isLocal 
-    ? `${localEndpoint}/chat/completions` 
-    : 'https://api.openai.com/v1/chat/completions';
+    ? `${localEndpoint}v1/chat/completions
+` 
+    : 'https://api.openai.com/v1v1/chat/completions
+';
 
   if (logRequest) {
     console.log(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Executing request to model ${model} with ${maxTokens} max tokens`);
