@@ -2,12 +2,12 @@
 import axios from 'axios';
 
 /**
- * Executes OpenAI API request with optimized parameters for Slippi technical analysis
+ * Executes OpenAI API request with support for local LM Studio models
  * 
- * @param {string} apiKey - OpenAI API key
+ * @param {string} apiKey - OpenAI API key or 'local' for LM Studio
  * @param {string} prompt - Technical analysis prompt
  * @param {Object} options - Configuration parameters
- * @returns {Promise<string>} - Generated text from OpenAI
+ * @returns {Promise<string>} - Generated text from AI model
  */
 export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
   // Default parameters optimized for technical Slippi analysis
@@ -18,20 +18,44 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
     topP = 1.0,
     frequencyPenalty = 0,
     presencePenalty = 0,
-    logRequest = false
+    logRequest = false,
+    localEndpoint = 'http://localhost:1234/v1', // LM Studio default endpoint
+    useLocalModel = apiKey === 'local'  // Automatic if apiKey is 'local'
   } = options;
 
+  // Determine if we should use local model or OpenAI
+  const isLocal = useLocalModel || apiKey === 'local';
+  
+  // Set up API endpoint based on local or remote
+  const apiEndpoint = isLocal 
+    ? `${localEndpoint}/chat/completions` 
+    : 'https://api.openai.com/v1/chat/completions';
+
   if (logRequest) {
-    console.log(`[OPENAI] Executing request to model ${model} with ${maxTokens} max tokens`);
+    console.log(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Executing request to model ${model} with ${maxTokens} max tokens`);
   }
 
   try {
+    // Define system prompt for Melee expertise
+    const systemPrompt = 'You are an expert Super Smash Bros. Melee technical analyst and coach with deep knowledge of frame data, competitive play, and technical execution.';
+
+    // Create headers based on local or OpenAI
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Add OpenAI authentication if not using local model
+    if (!isLocal) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    // Send the request with appropriate configuration
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
+      apiEndpoint,
       {
-        model,
+        model: isLocal ? 'local-model' : model, // LM Studio uses any model name
         messages: [
-          { role: 'system', content: 'You are an expert Super Smash Bros. Melee technical analyst and coach with deep knowledge of frame data, competitive play, and technical execution.' },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
         max_tokens: maxTokens,
@@ -40,26 +64,22 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
         frequency_penalty: frequencyPenalty,
         presence_penalty: presencePenalty
       },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        }
-      }
+      { headers }
     );
 
     // Extract content using standard OpenAI response format
+    // This works for both OpenAI and LM Studio's compatible API
     if (response.data?.choices && response.data.choices.length > 0) {
       return response.data.choices[0].message.content;
     } else {
-      console.error('[OPENAI] Unexpected response structure:', JSON.stringify(response.data, null, 2));
+      console.error(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Unexpected response structure:`, JSON.stringify(response.data, null, 2));
       return 'Unable to generate content due to unexpected API response format.';
     }
   } catch (error) {
-    console.error('[OPENAI] API request failed:', error.message);
+    console.error(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] API request failed:`, error.message);
     if (error.response?.data) {
-      console.error('[OPENAI] Error details:', JSON.stringify(error.response.data, null, 2));
+      console.error(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Error details:`, JSON.stringify(error.response.data, null, 2));
     }
-    throw new Error(`OpenAI request failed: ${error.message}`);
+    throw new Error(`AI request failed: ${error.message}`);
   }
 }
