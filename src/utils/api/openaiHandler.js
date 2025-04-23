@@ -70,7 +70,7 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
     // Extract content using standard OpenAI response format
     // This works for both OpenAI and LM Studio's compatible API
     if (response.data?.choices && response.data.choices.length > 0) {
-      return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
+      return response.data.choices[0].message.content;
     } else {
       console.error(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Unexpected response structure:`, JSON.stringify(response.data, null, 2));
       return 'Unable to generate content due to unexpected API response format.';

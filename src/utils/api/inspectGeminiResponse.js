@@ -273,8 +273,7 @@ function extractGeminiContent(response) {
 function extractGeminiContent(response) {
     // Validated traversal path: ${traversalPath}
     if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
-.data.candidates[0].content.parts[0].text;
+        return response.data.candidates[0].content.parts[0].text;
     }
     
     // Fallback extraction logic for alternative paths

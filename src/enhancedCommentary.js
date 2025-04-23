@@ -123,7 +123,7 @@ For each insight, provide specific, actionable advice with frame data where rele
   try {
     // Use OpenAI for technical coaching
     return executeOpenAIRequest(apiKey, coachingPrompt, {
-      model: 'meta-llama-3.1-70b-instruct',
+      model: 'gpt-3.5-turbo',
       maxTokens,
       temperature,
       logRequest: true

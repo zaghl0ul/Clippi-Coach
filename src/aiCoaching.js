@@ -28,9 +28,7 @@ export async function generateCoachingAdvice(apiKey, matchData) {
                 max_tokens: 1500,
                 temperature: 0.7
             });
-            return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
-.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
-
+            return response.data.text; // Adjust based on your LLM's response format
         } else {
             throw new Error('No valid API key or LLM configuration found.');
         }

@@ -61,11 +61,7 @@ export async function provideLiveCommentary(apiKey, events, options) {
           max_tokens: maxLength,
           temperature
         });
-        
-        // Return the actual chat response content
-        return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
-.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
-        
+        return response.data.text; // Adjust based on your LLM's response format
       } catch (err) {
         console.error('[LOCAL_LLM] Error generating commentary:', err.message);
         throw new Error('Local LLM request failed');

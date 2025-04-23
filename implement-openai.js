@@ -119,8 +119,7 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
 
     // Extract content using standard OpenAI response format
     if (response.data?.choices && response.data.choices.length > 0) {
-      return response.data.choices?.[0]?.message?.content?.trim() || '⚠️ No response';
-.data.choices[0].message.content;
+      return response.data.choices[0].message.content;
     } else {
       console.error('[OPENAI] Unexpected response structure:', JSON.stringify(response.data, null, 2));
       return 'Unable to generate content due to unexpected API response format.';
@@ -177,7 +176,7 @@ async function testOpenAIIntegration() {
   try {
     console.time("Request duration");
     const result = await executeOpenAIRequest(apiKey, prompt, {
-      model: 'meta-llama-3.1-70b-instruct',
+      model: 'gpt-3.5-turbo',
       maxTokens: 500,
       temperature: 0.7,
       logRequest: true
