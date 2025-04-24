@@ -212,6 +212,125 @@ class OpenAIProvider extends LLMProvider {
 }
 
 /**
+ * Google Gemini Provider implementation
+ * Interfaces with Google's Generative AI API
+ */
+class GeminiProvider extends LLMProvider {
+  constructor(config) {
+    super(config);
+    this.name = 'Google Gemini';
+    this.apiKey = config.apiKey;
+    this.model = config.model || 'gemini-pro';
+    this.apiVersion = 'v1beta';
+    this.endpoint = `https://generativelanguage.googleapis.com/${this.apiVersion}/models/${this.model}:generateContent`;
+    
+    if (!this.apiKey) {
+      throw new Error('Google API key is required for Gemini');
+    }
+  }
+  
+  /**
+   * Generate completion using Google Gemini API
+   * @param {string} prompt - Input prompt
+   * @param {Object} options - Generation options
+   * @returns {Promise<string>} - Generated text
+   */
+  async generateCompletion(prompt, options = {}) {
+    const { 
+      maxTokens = 100, 
+      temperature = 0.7,
+      systemPrompt = 'You are a helpful assistant.'
+    } = options;
+    
+    try {
+      console.log(`[${this.name}] Generating using model: ${this.model}`);
+      
+      // Combine system prompt and user prompt for Gemini
+      const combinedPrompt = `${systemPrompt}\n\n${prompt}`;
+      
+      // Prepare request structure according to v1beta API specs
+      const requestBody = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: combinedPrompt }]
+          }
+        ],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          topP: 0.95,
+          topK: 40
+        }
+      };
+      
+      const response = await axios.post(
+        `${this.endpoint}?key=${this.apiKey}`,
+        requestBody,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      // Extract content from Gemini v1beta API response structure
+      if (response.data?.candidates && 
+          response.data.candidates.length > 0 && 
+          response.data.candidates[0].content?.parts && 
+          response.data.candidates[0].content.parts.length > 0) {
+        const textContent = response.data.candidates[0].content.parts
+          .filter(part => part.text)
+          .map(part => part.text)
+          .join('')
+          .trim();
+          
+        return textContent || "No text content found in response";
+      }
+      
+      console.error(`[${this.name}] Unexpected response structure:`, JSON.stringify(response.data, null, 2));
+      throw new Error('Invalid response structure from Gemini API');
+    } catch (error) {
+      console.error(`[${this.name}] API Error:`, error.message);
+      if (error.response?.data) {
+        console.error(`[${this.name}] Response details:`, JSON.stringify(error.response.data, null, 2));
+      }
+      throw error;
+    }
+  }
+  
+  /**
+   * Test connection to Google Gemini API
+   * @returns {Promise<Object>} - Connection test result
+   */
+  async testConnection() {
+    try {
+      // Use a simple prompt for testing connection
+      const result = await this.generateCompletion('Say "Connected successfully" if you can read this', { 
+        maxTokens: 20,
+        temperature: 0.1,
+        systemPrompt: 'You are a helpful assistant.'
+      });
+      
+      return { 
+        success: true, 
+        response: result,
+        provider: this.name,
+        model: this.model,
+        apiVersion: this.apiVersion
+      };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.message,
+        provider: this.name,
+        model: this.model
+      };
+    }
+  }
+}
+
+/**
  * Anthropic Claude Provider implementation
  * Interfaces with Anthropic API for Claude models
  */
@@ -317,6 +436,9 @@ export function createLLMProvider(type, config) {
       return new OpenAIProvider(config);
     case 'anthropic':
       return new AnthropicProvider(config);
+    case 'gemini':
+    case 'google':
+      return new GeminiProvider(config);
     default:
       throw new Error(`Unknown provider type: ${type}`);
   }
@@ -374,9 +496,10 @@ export async function selectLLMProvider() {
     console.log("1. Local LM Studio");
     console.log("2. OpenAI (GPT models)");
     console.log("3. Anthropic (Claude models)");
-    console.log("4. Template System (no LLM)");
+    console.log("4. Google (Gemini models)");
+    console.log("5. Template System (no LLM)");
     
-    const selection = await question("\nSelect a provider (1-4): ");
+    const selection = await question("\nSelect a provider (1-5): ");
     let provider;
     
     switch (selection.trim()) {
@@ -422,8 +545,26 @@ export async function selectLLMProvider() {
         // Update .env with API key
         updateEnvFile('ANTHROPIC_API_KEY', anthropicKey.trim());
         break;
-        
+      
       case '4':
+        const geminiKey = await question("Enter Google API key: ");
+        if (!geminiKey.trim()) {
+          console.log("❌ Google API key is required for Gemini.");
+          provider = new TemplateProvider();
+          break;
+        }
+        
+        const geminiModel = await question("Enter model name (default: gemini-pro): ");
+        provider = createLLMProvider('gemini', { 
+          apiKey: geminiKey.trim(),
+          model: geminiModel.trim() || 'gemini-pro'
+        });
+        
+        // Update .env with API key
+        updateEnvFile('GEMINI_API_KEY', geminiKey.trim());
+        break;
+        
+      case '5':
         provider = new TemplateProvider();
         break;
         

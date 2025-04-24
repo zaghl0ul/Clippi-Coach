@@ -119,7 +119,8 @@ const chokidar = require('chokidar');
 const { SlippiGame } = require('@slippi/slippi-js');
 
 // Import our coaching modules
-import { provideLiveCommentary, COMMENTARY_STYLES } from './liveCommentary.js'; // Ensure COMMENTARY_STYLES is exported if used
+import { provideLiveCommentary } from './liveCommentary.js';
+import { COMMENTARY_STYLES } from './hybridCommentary.js';
 import { generateCoachingAdvice } from './aicoaching.js';
 import { getConfig } from './utils/configManager.js'; // Keep for potential future use, though direct process.env is used now
 import { characterNames } from './utils/slippiUtils.js';
@@ -1040,10 +1041,12 @@ class EnhancedSlippiCoach {
    * @param {string} filePath Path to the game file
    */
    async _generateGameAnalysis(filePath) {
-    const advice = await generateCoachingAdvice(
-      this.llmProvider, // Pass the provider instance
-      matchData
-    );
+    // First access game data correctly
+    const gameData = this.gameByPath[filePath];
+    if (!gameData || !gameData.state) {
+      console.warn(`Cannot generate analysis for ${path.basename(filePath)}: Game data not available`);
+      return;
+    }
     const gameState = gameData.state;
 
     if (!gameState.players || gameState.players.length === 0) {
@@ -1094,14 +1097,17 @@ class EnhancedSlippiCoach {
     // Generate AI coaching advice
     try {
       console.log("\n🧠 Generating coaching advice...");
-      // Pass the correct apiKey from the instance
-      const advice = await generateCoachingAdvice(this.apiKey, matchData);
+      // Pass the correct provider instance, not just the API key
+      const advice = await generateCoachingAdvice(
+        this.llmProvider, // Pass the actual provider instance
+        matchData
+      );
       console.log("\n===== COACHING ADVICE =====");
       console.log(advice || "No coaching advice generated."); // Handle potentially empty advice
       console.log("===========================\n");
     } catch (err) {
       // Error is logged within generateCoachingAdvice
-      console.error("❌ Failed to generate coaching advice. See previous errors.");
+      console.error("❌ Failed to generate coaching advice: ", err.message);
     }
   }
 }

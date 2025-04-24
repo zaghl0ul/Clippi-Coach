@@ -65,23 +65,93 @@ async function setupLocalLLM() {
     console.log("\nConfiguring for local LLM through LM Studio");
     console.log(`Endpoint: ${endpoint}`);
   } else {
-    // User wants to use OpenAI - restore from backup if available
-    if (envContent.includes('OPENAI_API_KEY_BACKUP=')) {
-      const match = envContent.match(/OPENAI_API_KEY_BACKUP=([^\n]*)/);
-      if (match && match[1]) {
-        envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${match[1]}`);
-        console.log("\nRestored OpenAI API key from backup");
-      }
-    } else {
-      // Prompt for OpenAI key if no backup
-      const apiKey = await question("Enter your OpenAI API key: ");
-      if (apiKey.trim()) {
-        if (envContent.includes('API_KEY=')) {
-          envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${apiKey.trim()}`);
+    // User doesn't want local LLM - ask which API to use
+    const apiType = await question("Which API would you like to use? (1=OpenAI, 2=Anthropic Claude, 3=Google Gemini): ");
+    
+    switch(apiType.trim()) {
+      case '1': // OpenAI
+        // Restore from backup if available
+        if (envContent.includes('OPENAI_API_KEY_BACKUP=')) {
+          const match = envContent.match(/OPENAI_API_KEY_BACKUP=([^\n]*)/);
+          if (match && match[1]) {
+            envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${match[1]}`);
+            console.log("\nRestored OpenAI API key from backup");
+          }
         } else {
-          envContent += `API_KEY=${apiKey.trim()}\n`;
+          // Prompt for OpenAI key if no backup
+          const apiKey = await question("Enter your OpenAI API key: ");
+          if (apiKey.trim()) {
+            if (envContent.includes('API_KEY=')) {
+              envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${apiKey.trim()}`);
+            } else {
+              envContent += `API_KEY=${apiKey.trim()}\n`;
+            }
+          }
         }
-      }
+        break;
+        
+      case '2': // Anthropic Claude
+        const anthropicKey = await question("Enter your Anthropic API key: ");
+        if (anthropicKey.trim()) {
+          // Store in both API_KEY and ANTHROPIC_API_KEY
+          if (envContent.includes('API_KEY=')) {
+            envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${anthropicKey.trim()}`);
+          } else {
+            envContent += `API_KEY=${anthropicKey.trim()}\n`;
+          }
+          
+          // Also store in dedicated key
+          if (envContent.includes('ANTHROPIC_API_KEY=')) {
+            envContent = envContent.replace(/ANTHROPIC_API_KEY=([^\n]*)/, `ANTHROPIC_API_KEY=${anthropicKey.trim()}`);
+          } else {
+            envContent += `ANTHROPIC_API_KEY=${anthropicKey.trim()}\n`;
+          }
+          
+          console.log("\nConfigured for Anthropic Claude API");
+        }
+        break;
+        
+      case '3': // Google Gemini
+        const geminiKey = await question("Enter your Google API key for Gemini: ");
+        if (geminiKey.trim()) {
+          // Store in both API_KEY and GEMINI_API_KEY
+          if (envContent.includes('API_KEY=')) {
+            envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${geminiKey.trim()}`);
+          } else {
+            envContent += `API_KEY=${geminiKey.trim()}\n`;
+          }
+          
+          // Also store in dedicated key
+          if (envContent.includes('GEMINI_API_KEY=')) {
+            envContent = envContent.replace(/GEMINI_API_KEY=([^\n]*)/, `GEMINI_API_KEY=${geminiKey.trim()}`);
+          } else {
+            envContent += `GEMINI_API_KEY=${geminiKey.trim()}\n`;
+          }
+          
+          // Add optional model selection
+          const geminiModel = await question("Enter Gemini model name (leave blank for default 'gemini-2.0-flash'): ");
+          if (geminiModel.trim()) {
+            if (envContent.includes('GEMINI_MODEL=')) {
+              envContent = envContent.replace(/GEMINI_MODEL=([^\n]*)/, `GEMINI_MODEL=${geminiModel.trim()}`);
+            } else {
+              envContent += `GEMINI_MODEL=${geminiModel.trim()}\n`;
+            }
+          }
+          
+          console.log("\nConfigured for Google Gemini API");
+        }
+        break;
+        
+      default:
+        // Prompt for OpenAI key as default
+        const defaultApiKey = await question("Enter your OpenAI API key: ");
+        if (defaultApiKey.trim()) {
+          if (envContent.includes('API_KEY=')) {
+            envContent = envContent.replace(/API_KEY=([^\n]*)/, `API_KEY=${defaultApiKey.trim()}`);
+          } else {
+            envContent += `API_KEY=${defaultApiKey.trim()}\n`;
+          }
+        }
     }
   }
   
@@ -97,8 +167,11 @@ async function setupLocalLLM() {
     console.log("2. Load a model in LM Studio (recommended: Mistral 7B, Llama-3 8B, or similar)");
     console.log("3. Start the server in LM Studio (Settings > Server tab > Start)");
     console.log("4. Run your Slippi Coach application");
+  } else if (apiType && apiType.trim() === '3') {
+    console.log("1. Ensure your Google API key has Gemini API access enabled");
+    console.log("2. Run your Slippi Coach application");
   } else {
-    console.log("1. Ensure your OpenAI API key has been set correctly");
+    console.log("1. Ensure your API key has been set correctly");
     console.log("2. Run your Slippi Coach application");
   }
   

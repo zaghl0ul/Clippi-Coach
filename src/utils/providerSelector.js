@@ -14,12 +14,13 @@ export async function selectLLMProvider() {
   console.log("1. Local LM Studio");
   console.log("2. OpenAI");
   console.log("3. Anthropic Claude");
-  console.log("4. Template-only (No LLM)");
+  console.log("4. Google Gemini");
+  console.log("5. Template-only (No LLM)");
   
   let provider = null;
   
   try {
-    const selection = await question("\nSelect a provider (1-4): ");
+    const selection = await question("\nSelect a provider (1-5): ");
     
     switch (selection.trim()) {
       case '1':
@@ -45,6 +46,14 @@ export async function selectLLMProvider() {
         });
         break;
       case '4':
+        const geminiKey = await question("Enter Google API key: ");
+        const geminiModel = await question("Enter model name (default: gemini-pro): ");
+        provider = createLLMProvider('gemini', { 
+          apiKey: geminiKey.trim(),
+          model: geminiModel.trim() || 'gemini-pro'
+        });
+        break;
+      case '5':
         console.log("Selected template-only mode. No LLM integration will be used.");
         provider = null;
         break;

@@ -8,6 +8,9 @@ import { generateTemplateCommentary } from './templateCommentary.js';
 // Import the OpenAI handler
 import { executeOpenAIRequest } from './utils/api/openaiHandler.js';
 
+// Import constants
+import { COMMENTARY_STYLES } from './utils/constants.js';
+
 // Cache for LLM-generated commentary to reduce API calls
 const commentaryCache = new Map();
 const CACHE_EXPIRY = 30000; // 30 seconds
@@ -323,5 +326,6 @@ Focus on technical execution, strategic implications, and competitive relevance.
 // Export the main functions
 export { 
   COMMENTARY_MODES,
+  COMMENTARY_STYLES,
   generateTemplateCommentary
 };

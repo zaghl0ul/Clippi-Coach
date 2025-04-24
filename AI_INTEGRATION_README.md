@@ -1,6 +1,6 @@
 # Slippi Coach AI Integration Guide
 
-This document explains how to use the AI-powered commentary and coaching features in Slippi Coach. The integration supports both local language models (via LM Studio) and OpenAI's API.
+This document explains how to use the AI-powered commentary and coaching features in Slippi Coach. The integration supports local language models (via LM Studio), OpenAI, Anthropic Claude, and Google Gemini.
 
 ## Table of Contents
 
@@ -56,6 +56,33 @@ This option requires an OpenAI API key and incurs usage costs.
    ```
 4. Choose "Use OpenAI API" and enter your API key
 5. Restart Slippi Coach to apply changes
+
+### Option 3: Anthropic Claude Setup
+
+This option requires an Anthropic API key and incurs usage costs.
+
+1. Create an account at [Anthropic](https://console.anthropic.com/)
+2. Generate an API key in your account settings
+3. In Slippi Coach, run the setup script:
+   ```
+   node setup-local-llm.js
+   ```
+4. Choose API option "2" for Anthropic Claude and enter your API key
+5. Restart Slippi Coach to apply changes
+
+### Option 4: Google Gemini Setup
+
+This option requires a Google API key with Gemini API access and incurs usage costs.
+
+1. Create a Google Cloud account if you don't already have one
+2. Enable the Gemini API in your Google Cloud Console
+3. Generate an API key with Gemini API access
+4. In Slippi Coach, run the setup script:
+   ```
+   node setup-local-llm.js
+   ```
+5. Choose API option "3" for Google Gemini and enter your API key
+6. Restart Slippi Coach to apply changes
 
 ## Features
 

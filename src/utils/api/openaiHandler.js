@@ -20,27 +20,24 @@ export async function executeOpenAIRequest(apiKey, prompt, options = {}) {
     presencePenalty = 0,
     logRequest = false,
     localEndpoint = 'http://localhost:1234/v1', // LM Studio default endpoint
-    useLocalModel = apiKey === 'local'  // Automatic if apiKey is 'local'
+    useLocalModel = apiKey === 'local',  // Automatic if apiKey is 'local'
+    systemPrompt = 'You are an expert Super Smash Bros. Melee technical analyst and coach with deep knowledge of frame data, competitive play, and technical execution.'
   } = options;
 
   // Determine if we should use local model or OpenAI
   const isLocal = useLocalModel || apiKey === 'local';
   
   // Set up API endpoint based on local or remote
+  // Fixed: Removed newline character and corrected endpoint path
   const apiEndpoint = isLocal 
-    ? `${localEndpoint}v1/chat/completions
-` 
-    : 'https://api.openai.com/v1v1/chat/completions
-';
+    ? `${localEndpoint}/chat/completions` 
+    : 'https://api.openai.com/v1/chat/completions';
 
   if (logRequest) {
     console.log(`[${isLocal ? 'LOCAL_LLM' : 'OPENAI'}] Executing request to model ${model} with ${maxTokens} max tokens`);
   }
 
   try {
-    // Define system prompt for Melee expertise
-    const systemPrompt = 'You are an expert Super Smash Bros. Melee technical analyst and coach with deep knowledge of frame data, competitive play, and technical execution.';
-
     // Create headers based on local or OpenAI
     const headers = {
       'Content-Type': 'application/json'
