@@ -1,11 +1,92 @@
-// Enhanced Slippi Coach implementation based on official Slippi patterns
 import { createRequire } from 'module';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 dotenv.config(); // Ensure this is called early to load .env variables
+import { selectLLMProvider } from './utils/providerSelector.js';
+/**
+ * Displays a stylized ASCII art banner for Slippi Coach
+ */
+function displaySlippiCoachBanner() {
+  const banner = `--------------------------------------------------------------------------------------=------------------------------------------------------------------------------------
+-#########################################################################################################################*###*#########*#################################-
+-##*#*##*##*#*#*#*#*#*##*#*#*##*#*#*##*#*#*#*#*#*#*#*#*#*#*###*##*#**##*####*******##%@@@@@%##*#*##*#*#*#*#*##*#*#*#*#*#####*###*#*#*#*###*#*#*#*#*#*#*#*#*###*#*#*#*#####-
+-#######*#############*######*######*######################*#*###*####%@@@@@@@@@@@@@@%.....:%#####*##########*##########*#*##*#########*###################*#*#######*#*#*-
+-##***##*#**##*#*#*#*###*****###*#*##*#*#*#*#*#*#*#*#*##**####**##%@@@#:...............+*+*#@@@@@@%###*#**#*##*#*#*#*#*########*#*#*#*##*#*##*#*#*#*#*#*#*####*#*#*####*##-
+-######*#######*###*#*#*#*##***##*#*###*####*####*####*####*####%@%........::::---::::...........:%@@@%#####*####*##*##*#**#*#*#######*###*#####*#*###*####*#*###*#*#*###*=
+-##*#*#*#*##*###*##############*####*####*####*####*###*#*##*#%@:....:-:.....:--:....:--------:.......@@%#*##*#*##*##*#######*##*#*#*##*####*#*#####*##*#*####*#######*###-
+-############*####*#*#*#####*####*###*#*##*#*##*#*###*####*##@#..........=#*...:......:........----:....@%######*#####*#*#*###*######*###*#####*#*#########*###*#*#*####*#-
+-#*#*#*#*#*#*##**#######****##**##*######*###*####**###*#*##@+...@@@@=.@@@@@@@...@@@@...+@@@@=......::...#@#*###*#*#*######*#*#*#**####*##*#*#*###*#*#*#*###*#######*#*###-
+-####*##*##*#*####*#*##*########*##*#*#*##*###*#*####*#####%#..:@@.#@==@@..*@#..@@-%%..=@@..@@%.@@@.......*%#**######*#*#*##########*#*#*######*#####*###*###*#*#*#####*##-
+-#*###*#########*##*##*#***#*####*#########*#####*#*##*##*#%...%@=....#@%..@@:.#@#.+@-.#%@...#.:%@..@@@::..@###*#*#*####*#*#*#*#*#*######*#*#*##*#*#*#*#*#*#####*#*#*###*#-
+-##*####*#**#*######*##*#*####**###*##*#*#*#*#*#*##*###*##%%...%@..##:%%...@%.:@@@@@@+.%%%.....+%%=.%@-.::.#%*##*###*#*############*#*#*####*#*############*#*#*#####*####-
+-###*#**######*#*#*##*####***#####*#*############*##*##*##%:..-@@.@@%.@@@@@@+:@@:..#@@:@@#.#@@.%%%@@%%..--.-%#*#*#*####*#*#*#*#*#*####*#*#*#####*#*#*#*#*#*#####*#*#*#*#*#-
+-#*#####*#*#*######*###*####**#*#####*#*#*#*#*#*##*##*####@....%@@#.................:-..%@@@@=.@@...%%..-:.:@####*##*######*##*####*#*#####*#*#*#*###*#####*#*#*###*######-
+-##*#*#######*#*#*##*###*#*#####*#*#*###*###*###*##*###*#%#...................................-%@..@@%.:--.:@*#*##*##*#*#*##*##*#*####*#*#*#######*#*#*#*#*#####*###*#*#*#-
+-#####*#*#*#*#####*##*#####*#*#####*#*###*###*###*###*##%@#-%@@@@@@@@@@@@@@@@@@@@@@@@@%+...........+%+.---.-%##*######*###*##*####*#*######*#*#*#*#########*#*#*#*#####*##-
+-#*#*########*#*#*#*##*#*#*###*#*#*###*###*###*####%@@@@%##*-........................-#%@@@@@#.............+%####**#*#*##*#*##*#*####*#*#*####*###*#*##*#*########*#*#*#*#-
+-####*#*#*#*########*#######*#######*##*###*###%@@@#.....................:---------:........-%@@@@......@@@@@@@@@@%%###*####*####*#*####*#*#*##*#####*####*#*#*#*#*#######-
+-##*########*#*#*#*##*#*#*###*#*##*###*#*###%@@*.....-%@@@@@@@@@@@@@@%*:......:-----------:......+@@@%@@*.........-@@%###*###*#*####*#*######*##*#*#*#*#*######*####*#*#*#-
+-##*##***#*########*######*####*#*##*####*#%%...-@@@@@@+...........#@@@@@@@@*......:----------:....-@@...............@%#*#*####*#*######*#*###*###########*#*#*#*#*####*##-
+-#**####*##**#*#*###*#*#*#****###***#*#*###+..@@%##%%.....-@@@@@:....%%%@@@@@@@@@-..............%@@@#....:@@@@@@*.....#%###*#*####*#*#*####*#*##*#*#*#*#*###*######*#*##*#-
+-####*#**##*####*#*#########*##*#*######*##%%%%####%:...#@@@@@@@@@+...@%:.......%@@@@@@@@@@@@@@@@:@@....@@%@@@@%@@+....%#*####*#*###*##*#*##*##*#####*###*#*#*#*#*####*###-
+-##*####*####*#####*#*####*##*#####*#*############%#...*@##+...##%@=......::-:.........=**=............@%#%....###@-...#%#*#*###*#*##*####*##*##*#*#*#*###########*#*##*##-
+-*###*####*###*#*######**##*###*#*####*#*#*#*#*#*#%*.-.%%##=...###@%.-------------:::........::------.-@##%....###@%.-.+%#*##*########*#*###*#*##*#####*#*#*#*#*#*###*##*#-
+=*#*##*#*##*#####*#*#*######*#####*#*####*########%%.:.+@%#%@@@%#%@:.--------------------------------:.@@#%@@@@%#%@....#%#####*#*#**######*####*##*#*#####*#######*###*###-
+-###*###*###*#*#*###*#*#*#*###*#*#####*###*#***###%@*...-@@%%#%%@@..:--------------------------------:..@@@%##%%@@..:.#@%##*#*######**#*##*#*#*######*#*#*#*#*#*#*#*###*##-
+-#*##*####*######*#########*#*###*#*###*########%@@=.:-:...%@@@%...:-----------------------------------...+@@@@#...:-..=@@@###*#*#*#####*######*#*#*####*#####*#####*###*#-
+-#####*#*##*#*#*##*#*#*#*#*###*#*###*#*#*#*#*#%@*....----:.......:--------------------------------------:........:----....-@%######*#*#*#*#*#*####*#*#*##*#*###*#*#*#*####-
+-#*#*####*###*##*####*##*##*######*##########%%...-----------------------------------------------------------------------...%%#*#*##########*##*#*#####*####*#########*#*#-
+-####*#*##*###*###*#*#*###*#*#*#**#*#*#*#*#*#@..:-------------------::.........................:--------------------------:..@#*##*#*#*#*#*##*#####*#*##*#*##*#*#*#*######-
+-#*#####*##*#*##*######*########*#########*##@..-----------:..............:--=++****++==-:................:----------------..@###########*#*##*#*#####*####*####*##*#*#*##-
+-##*#*#*#*####*##*#*#*###*#*#*###*#*#*#*#*###@..----:.........-*%@@@@@@@@@@@@%%%%%%%%%%@@@@@@@@@@@@%%*=.............::-----..@#*#**#*#*#*########**#*##*#*##*#*##*###*##*#-
+-###########*##*######*####*##*#######*###*##@..-:.....=#%@@@@@@@@@@@@@@@@@@@@@@@%%%%###*##*#*#*###%%%@@@@@@@%#+-........:-..@#*#########*#*#**######*####*####*##*####*##-
+-#*#*#*##***#*##*#*#*##*#**####*#*#*###*#####@..::-@@@@@%%###%@@#..............:-+#%%@@@@%##*####*#####*#*###%%%@@@@@@@@=-:.:%###*#*#*#*####**##*#####*#*###*#*#*###*#*###-
+-###*##**#####*######*######*#######*###*#*#*%%..:..%@%####%@%......:----:...............-####**##**#*###########*##@@*.....@##*########*#*######*#**####*###*###*#####*#*-
+-#*##*#####*#*#*#*#*###*#*##*#*#*#*##*########%@.......#%@@+...#%+:........-------:...:@@%##*###*#*####*#*#*#*###%@@-......@%###*#*#*#*#####*#*#*#####*###*###*#*#*#*#*###-
+-#####**#*##*#######*#*###**#######*##*#*#*#*##%@%...%@@@....%@@%%@@@@@@@@.-----....%@@%####*#######*#*########%@@.......%@%##*####*###*#*#*######*####*###*#*#########*##-
+-#*#*#####*###*##*#*###*##*##*##*########*##*####%@@@@#...:@@@@@@%%##%@%...--:...-@@%########*#**#*##*#*##*##@@#.......%@%##*###*###*#######*#*#*##*#*##*#####*#*#*#*#*#*#-
+-###########*##**####*#########*###*#*####*####*##%@+...:-.......+%@@+.........%@@%###**#%-########*######%@@=.......@@%##*###*##*#*##*#*#*######*#######*#*#*############-
+-##***#**##**##******##****##****#**##***###***##%@...-------::............@@@@%##*#*##%@.:##*#***#*####%@@.......:@@%#*##*#*##*#####*##*#*#*#*#*#*#*#**######*#*#*#*#***#-
+-####################*#####*######*####**#*#####%@..:---------------:...@@@%#####*####%@..%##*########%@@.......%@@##########*##*#*#*####################*#*#*#######*####-
+-#*#*###*##*#*#*#*#*###**####**#*###*#######*#*#@..:---------------:..%@%%@@@@@@%#*#%@-.=%##*####*#%@@+.......@@%##*##*#*#*###*######*#*##*#*#*#*#*#*#*#######*#*#*#####**-
+-####*#*############*#####***####*##*##*#*#####%#.:---------------:..@%#%@......%%###..%@##*#*#*#%@@-.......@@%###*###*####*####*#*#*##**######*###*###*#*#*#*#####*#*#*##-
+-#*#####*##*#*#*#*#*#*##*##*##*###*##*####**#*#@..----------------..%%#%%...--:..@##%..%%*##*##%@@.......+@@%##**#*#*##*#*##*#*######*####*#*#*#*#*#*#####*###*#*#######*#-
+-##*#*#*#*#*####*######*#######*#*##*#*#*#####*@..-:...:---------:.+@#%%..------.=%#%..%####%@@%.......%@%####*######*####**####*#*#*##**############*#*#*#*###*#*#*#*#*##-
+-############*##*#*#*###*#*#*#*###*######*##*##%..........-------..@##@..:------.*%#%..@@@@@%-.......@@%###*###***#*##*#*#####*######*###*#*#*#*#*#*########*#*##########*-
+-#*#*#*#*#*#*########*#*#######*###*#*#*##*##*#%@#@@@@@@*..------..@##@..------..@#%%.-@..........+@@%######*#####*#######*#*##*#*#*##*#####*###*###*#*#*#*#####*#*#*#*#*#-
+-#########*##*#*#*#*####*#*#*#*#*#####*#*####%@@+.@-...+@*.:-----..@*#@..:---:..#%#%:.%@........%@%##*#*#*###*#*###*#*#*#*###*######*##**#*##*####*####*#*#*#*#*###*#*####-
+-#*#*#*#*###*#######*#*###*##*###*#*#####*##%%....@..%@#@@..:----..@##%*.......#%%%#.-@.....#@@@%#########*#*###*#####*###*#*#*#*#*##*#####*##*#*##*#*##########*#*####*#*-
+-#########*##*#*#*#*###*###*###*####*#*#*###%..+@@@-.:#..@@..:---..%%##%%....#@%%@%..@%@@@@@%%##*#*###*#*#####*###*#*##*#########*#*##*##*##*####*#####*#*#*#*#*####*#####-
+=#*#*#*#*##*####*####*##*###*###*#*##*####*%#..@%##%@@@#..@%.....:..@%##%@@@@%%%@...@%##**####*####*#*###*#*#*##*#*##*##*#*#*#*###*#*###*#*##*#*##*#*#*#########*#*##*#**#-
+-########*##*#*###*#*#*##*###*#####*##*#*####..@%#*#*#%@..@%@@#......%@@%%#%@@@-..%@%##*#*#*####*#*###*#*#####*####*##*#########*####*#####*####*######*#*#*#*#*###*#####*-
+-#*#*#*#*#*##*##*######*##*#*#*#*#*#*#####*#%...@@%##%@#..@###%@@@@+....-%%+....%@%##*######*#**###*######*#*##*#*##*##*#*#*#**###*#*#*#*#*##*#*#*#*#*####*#####*#*##*#*##-
+-#############*##*#*#*###############*#**####@:...@@@#...@%########%@@@%....:%@@%##*###*#*#*####*#*#*#*#*####*####*#######*#####*##########*##*#######*#*###*#*####*####*#-
+-#*#***#*#*#*##*####*#*#*#*#*#*#*#***#####*###%@#......@@%##*#***#*#*##%%@@@%##***#*#*#*##*##*############*##**#*##*#*#*##*#*#*##**#*##*#*##*##*#*#**##*#*#*###*#*##*#*###-
+-#######*##*#*##*#*########*###*######*#*##*####%@@@@@@%#################*####################**#*#*#*#*#*#*##########*##*#####*#####*####*##*#######*######*#####*#####*#-
+-##*#*##*###########*#*#*#*#*#*#*#*#*#######*#*#########*#*#*#*#**#*#*#*###*#*#*#*#*#*#*#*#*##########*#####*#*#**#*##*###*#*###*#*###*#*###*##*#*#*##*#*#*##*#*#*##*#*###-
+-########*#*#*#*#*#*###*#############*#*#*#####*#*#*#*#####*############*######*########*###*#*##*#*#*##*#*#########*###*####*#####*#####*#*#*####*#*######*######*##*##*#-
+-#*#*#*#*#######*####*##*#*#*#*#*#*#*#####*#*#*###*###*#*###*#*##*#*#*#*#*#*#*###*#*#*#*#*#*###*####*######*#*#*#*#*#*#*#*#*###*#*##*#*#*#####*#*#####*#*#*#*#*#*##*##*###-
+-####*####*#*#*##*#*##*####*###*#####*#*#####*#*#*#*######*######*########*#*##*####*#######*####*####*#*#*###*####*######*##*####*######*#*#*###*#*#*###*#######*##*###*#-
+-*************************************************************************************************************************************************************************-
+-=======-===============-===========-===-===-==========-==============-=========-=====-===-===-====-=====-===============-==========-=================-====-===-==========-`;
 
+  // Apply ansi color for enhanced visual presentation
+  const coloredBanner = banner.replace(/-/g, '\x1b[34m-\x1b[0m')
+                              .replace(/#/g, '\x1b[36m#\x1b[0m')
+                              .replace(/@/g, '\x1b[33m@\x1b[0m')
+                              .replace(/%/g, '\x1b[35m%\x1b[0m')
+                              .replace(/=/g, '\x1b[32m=\x1b[0m')
+                              .replace(/\*/g, '\x1b[31m*\x1b[0m')
+                              .replace(/\+/g, '\x1b[37m+\x1b[0m')
+                              .replace(/\./g, '\x1b[90m.\x1b[0m');
+  
+  console.log(coloredBanner);
+  console.log('\x1b[1m\x1b[36m  SLIPPI COACH v1.0.0 \x1b[0m');
+  console.log('\x1b[90m  Real-time Melee analysis and coaching\x1b[0m');
+  console.log('');
+}
 // --- Start: Improved Configuration Validation ---
 const apiKey = process.env.API_KEY;
 const endpoint = process.env.LM_STUDIO_ENDPOINT;
@@ -44,6 +125,8 @@ import { getConfig } from './utils/configManager.js'; // Keep for potential futu
 import { characterNames } from './utils/slippiUtils.js';
 import './utils/logger.js'; // Initializes logger
 
+
+
 // Hierarchical event classification with differential throttling
 const EVENT_PRIORITIES = {
   STOCK_LOSS: { threshold: 1000, lastTriggered: 0 },
@@ -65,16 +148,25 @@ const ACTION_STATES = {
 
 // Track pending events for batched processing
 const PENDING_EVENTS_LIMIT = 5; // Increased slightly
-const BATCH_PROCESSING_INTERVAL = 1500; // ms
+const BATCH_PROCESSING_INTERVAL = 1000; // ms - reduced from 1500ms for faster response
 
 /**
  * Enhanced Slippi Coach with robust file detection
  */
 class EnhancedSlippiCoach {
-  constructor(apiKey, slippiDirectory = null) {
+  constructor(llmProvider, slippiDirectory = null) {
     this.slippiDirectory = slippiDirectory || this._getDefaultSlippiDirectory();
-    this.apiKey = apiKey; // Store the validated apiKey
-    this.localEndpoint = process.env.LM_STUDIO_ENDPOINT; // Store endpoint for passing
+    this.llmProvider = llmProvider; // Store the provider instance
+    
+    // Configuration for analysis
+    this.includeCpuEvents = false; // Set to true to include CPU-performed events in commentary
+    
+    // Advanced directory watching configuration
+    this.watchMode = 'directory'; // Using chokidar directory watching
+    this.directoryPollInterval = 100; // ms
+    
+    // File processing debounce
+    this.processingDebounce = 100; // Reduced from 200ms for faster response
 
     this.gameByPath = {};
     this.watcher = null;
@@ -84,6 +176,10 @@ class EnhancedSlippiCoach {
     this.pendingEvents = {};
     this.eventProcessorInterval = null;
     this.previousFrames = {}; // Store previous frames for state transition detection
+    
+    // Last processed file tracking to avoid redundant processing
+    this.lastProcessedFile = null;
+    this.lastProcessedTime = 0;
   }
 
   _getDefaultSlippiDirectory() {
@@ -209,13 +305,13 @@ class EnhancedSlippiCoach {
 
               // Call provideLiveCommentary with correct parameters
               await provideLiveCommentary(
-                  this.apiKey, // Pass the apiKey stored in the class instance
-                  eventsToProcess,
-                  {
-                      gameState: contextData, // Pass the constructed game state
-                      localEndpoint: this.localEndpoint, // Pass the endpoint explicitly
-                      commentaryStyle: COMMENTARY_STYLES.TECHNICAL // Example style
-                  }
+                this.llmProvider, // Pass the provider instance
+                eventsToProcess,
+                {
+                  gameState: contextData,
+                  commentaryStyle: COMMENTARY_STYLES.TECHNICAL,
+                  maxLength: 100
+                }
               );
           } catch (err) {
               // Error handling within provideLiveCommentary should log details
@@ -250,15 +346,18 @@ class EnhancedSlippiCoach {
     this.watcher = chokidar.watch(this.slippiDirectory, {
       depth: 0, // Watch only the top-level directory
       persistent: true,
-      usePolling: process.platform === 'win32', // Polling often more reliable on Windows for network/virtual drives
-      interval: 300, // Polling interval
-      binaryInterval: 500, // Binary polling interval
+      usePolling: true, // Always use polling for more reliable detection
+      interval: this.directoryPollInterval, // Polling interval (ms)
+      binaryInterval: 300,
       ignoreInitial: false, // Process existing files on startup
       awaitWriteFinish: { // Wait for writes to finish before triggering events
-        stabilityThreshold: 500, // ms - wait this long after last write
-        pollInterval: 100 // Check interval
+        stabilityThreshold: 200, // Reduced from 500ms for faster updates
+        pollInterval: 50 // Reduced from 100ms for faster updates
       },
-      ignored: /(^|[\/\\])\../ // Ignore dotfiles
+      ignored: [
+        /(^|[\/\\])\../, // Ignore dotfiles 
+        '**/CurrentGame.slp' // Explicitly ignore CurrentGame.slp
+      ]
     });
 
     console.log("Watcher initialized. Setting up event handlers...");
@@ -282,7 +381,6 @@ class EnhancedSlippiCoach {
         console.log("Enhanced Slippi Coach is now running!");
         console.log("Monitoring for Slippi games...");
     });
-
   }
 
   stop() {
@@ -315,11 +413,16 @@ class EnhancedSlippiCoach {
     if (!filePath.endsWith('.slp') || path.basename(filePath).startsWith('temp_')) {
       return;
     }
+    
+    // Skip explicitly if it's CurrentGame.slp
+    if (path.basename(filePath) === 'CurrentGame.slp') {
+      return;
+    }
 
     // Debounce rapid changes (e.g., during saving) - simple time-based debounce
     const now = Date.now();
     const lastProcessedTime = this.gameByPath[filePath]?.lastProcessedTime || 0;
-    if (now - lastProcessedTime < 200) { // Ignore changes within 200ms of last processing
+    if (now - lastProcessedTime < this.processingDebounce) {
         return;
     }
 
@@ -368,7 +471,6 @@ class EnhancedSlippiCoach {
       const latestFrame = game.getLatestFrame();
       const gameEnd = game.getGameEnd();
 
-
       // Process game start if not yet processed
       if (!gameState.settings && settings && settings.players && settings.players.length > 0) {
           this._handleGameStart(filePath, settings); // This updates gameState.settings and gameState.players
@@ -376,7 +478,6 @@ class EnhancedSlippiCoach {
 
       // Process frame data if game has started and frame is new
       if (gameState.settings && latestFrame && latestFrame.frame > gameState.latestFrameProcessed) {
-
         // Detect state transitions between frames if previous frame exists
         if (this.previousFrames[filePath]) {
           this._detectStateTransitions(filePath, this.previousFrames[filePath], latestFrame);
@@ -399,19 +500,11 @@ class EnhancedSlippiCoach {
           // console.log(`Game end already processed for ${path.basename(filePath)}`);
       }
 
-      // Only log read time if significant work was done
-      if (latestFrame && latestFrame.frame > (gameState?.latestFrameProcessed || -124)) {
-          // console.log(`Read/process took: ${Date.now() - start} ms for frame ${latestFrame.frame}`);
-      }
-
     } catch (err) {
       // Handle file read errors (likely file locks or corrupt files)
       if (err.message && !err.message.includes("already been finalized")) {
           // Avoid logging finalized errors which are expected during writes
           console.error(`Error processing ${path.basename(filePath)}: ${err.message}`);
-          // Consider removing the problematic file entry if errors persist
-          // delete this.gameByPath[filePath];
-          // delete this.pendingEvents[filePath];
       } else if (err.message && err.message.includes("Invalid SLP file")) {
           console.warn(`Skipping invalid SLP file: ${path.basename(filePath)}`);
           // Mark as completed to avoid reprocessing invalid file
@@ -442,7 +535,14 @@ class EnhancedSlippiCoach {
           const prevState = prevPlayerFrame.post.actionStateId;
           const currentState = player.post.actionStateId;
           const gameInfo = this.gameByPath[filePath];
-          const charName = gameInfo?.state?.players?.[playerIndex]?.character || 'Unknown';
+          const playerData = gameInfo?.state?.players?.find(p => p.index === playerIndex);
+          
+          // Skip CPU actions if not specifically enabled
+          if (playerData && playerData.playerType === 1 && !this.includeCpuEvents) {
+              return;
+          }
+          
+          const charName = playerData?.character || 'Unknown';
 
           // Only process if state changed meaningfully
           if (prevState !== currentState) {
@@ -484,6 +584,7 @@ class EnhancedSlippiCoach {
                       playerIndex,
                       frame: currentFrame.frame,
                       playerCharacter: charName,
+                      isHuman: playerData?.playerType === 0,
                       ...eventData // Spread subtype and details
                   });
               }
@@ -593,19 +694,22 @@ class EnhancedSlippiCoach {
               characterId,
               character,
               playerType: player.type, // 0=human, 1=CPU, 2=Demo?
-              // Add other relevant player info if needed (color, tag, etc.)
+              isHuman: player.type === 0,
+              isCPU: player.type === 1,
+              cpuLevel: player.type === 1 ? player.characterId : null
           };
       });
 
       console.log("Matchup:");
       gameState.players.forEach(p => {
-          console.log(`  Player (Port ${p.port}, Index ${p.index}): ${p.character}`);
+          console.log(`  Player (Port ${p.port}, Index ${p.index}): ${p.character}${p.playerType === 1 ? ' (CPU)' : ''}`);
       });
 
       // Generate a game start commentary event
       const matchupEvent = {
         type: "gameStart",
         matchup: gameState.players.map(p => p.character),
+        playerTypes: gameState.players.map(p => p.playerType),
         stage: settings.stageId,
         frame: settings.startFrame || -123 // Use start frame if available
       };
@@ -756,6 +860,11 @@ class EnhancedSlippiCoach {
         console.warn(`Stock lost for unknown player index: ${playerIndex}`);
         return;
     }
+    
+    // Skip CPU stock losses if not specifically enabled
+    if (playerData.playerType === 1 && !this.includeCpuEvents) {
+        return;
+    }
 
     const remainingStocks = frame.players[playerIndex]?.post?.stocksRemaining ?? '?';
 
@@ -769,7 +878,7 @@ class EnhancedSlippiCoach {
     };
     gameState.stockEvents.push(event);
 
-    const playerName = `Player (Port ${playerData.port}, ${playerData.character})`;
+    const playerName = `Player (Port ${playerData.port}, ${playerData.character}${playerData.playerType === 1 ? ' CPU' : ''})`;
     console.log(`💀 ${playerName} lost ${stocksLost} stock! Remaining: ${remainingStocks}`);
 
     // Generate live commentary for stock loss event
@@ -779,6 +888,8 @@ class EnhancedSlippiCoach {
       stocksLost,
       remainingStocks: remainingStocks,
       playerCharacter: playerData.character, // Pass character name
+      isHuman: playerData.playerType === 0,
+      isCPU: playerData.playerType === 1,
       frame: frame.frame
     });
   }
@@ -827,8 +938,15 @@ class EnhancedSlippiCoach {
 
       // Get player info
       const playerData = gameState.players.find(p => p.index === combo.playerIndex);
+      
+      // Skip CPU combos if not specifically enabled
+      if (playerData && playerData.playerType === 1 && !this.includeCpuEvents) {
+          return;
+      }
+      
+      const isHuman = playerData ? playerData.playerType === 0 : true; // Default to human if player data missing
       const attackerName = playerData ?
-        `Player (Port ${playerData.port}, ${playerData.character})` :
+        `Player (Port ${playerData.port}, ${playerData.character}${playerData.playerType === 1 ? ' CPU' : ''})` :
         `Player ${combo.playerIndex + 1}`; // Fallback
 
       // Categorize combo by size for appropriate throttling
@@ -848,6 +966,8 @@ class EnhancedSlippiCoach {
         moves: combo.moves.length,
         damage: parseFloat(damage.toFixed(1)), // Ensure number format
         playerCharacter: playerData?.character || "Unknown",
+        isHuman: isHuman,
+        isCPU: playerData?.playerType === 1,
         startFrame: combo.startFrame,
         endFrame: combo.endFrame,
         // Optional: add move IDs if needed by commentary prompt
@@ -920,12 +1040,10 @@ class EnhancedSlippiCoach {
    * @param {string} filePath Path to the game file
    */
    async _generateGameAnalysis(filePath) {
-    const gameData = this.gameByPath[filePath];
-    // Add checks for gameData and gameState
-    if (!gameData || !gameData.state) {
-        console.warn(`Skipping analysis for ${filePath}: Game data or state missing.`);
-        return;
-    }
+    const advice = await generateCoachingAdvice(
+      this.llmProvider, // Pass the provider instance
+      matchData
+    );
     const gameState = gameData.state;
 
     if (!gameState.players || gameState.players.length === 0) {
@@ -957,14 +1075,15 @@ class EnhancedSlippiCoach {
     const matchData = {
       damageDealt: gameState.players.map(p => totalDamage[p.index] || 0),
       stockLosses: gameState.players.map(p => stocksLostByPlayer[p.index] || 0),
-      characters: gameState.players.map(p => p.character || 'Unknown') // Use stored character names
+      characters: gameState.players.map(p => p.character || 'Unknown'), // Use stored character names
+      playerTypes: gameState.players.map(p => p.playerType)
     };
 
     // Display match summary
     console.log("\n===== MATCH SUMMARY =====");
     gameState.players.forEach((player) => { // Iterate through the structured player data
       const pIndex = player.index;
-      console.log(`Player (Port ${player.port}, ${player.character}):`);
+      console.log(`Player (Port ${player.port}, ${player.character}${player.playerType === 1 ? ' CPU' : ''}):`);
       console.log(`  Stocks Lost: ${stocksLostByPlayer[pIndex] || 0}`);
       console.log(`  Total Damage Dealt: ${(totalDamage[pIndex] || 0).toFixed(1)}`);
       console.log(`  Combos Recorded: ${combosByPlayer[pIndex]?.length || 0}`);
@@ -992,12 +1111,19 @@ class EnhancedSlippiCoach {
  */
 async function main() {
   console.log("Initializing Enhanced Slippi Coach...");
-
-  // API Key validation is now handled at the top of the file
-
+  
+  // Prompt for LLM provider selection
+  const llmProvider = await selectLLMProvider();
+  
+  if (llmProvider) {
+    console.log(`Selected LLM provider: ${llmProvider.name}`);
+  } else {
+    console.log("Running in template-only mode (no LLM).");
+  }
+  
   try {
-    // Create coach instance - apiKey is already validated
-    const coach = new EnhancedSlippiCoach(apiKey);
+    // Create coach instance with the selected provider
+    const coach = new EnhancedSlippiCoach(llmProvider);
 
     // Handle application shutdown gracefully
     const shutdown = () => {
@@ -1012,17 +1138,14 @@ async function main() {
     // Start monitoring
     await coach.start(); // start() now waits for watcher 'ready' event
 
-    // Log only after start is complete and watcher is ready
-    // console.log("Enhanced Slippi Coach is now running!");
-    // console.log("Monitoring Slippi directory for games...");
     console.log("Press Ctrl+C to exit.");
 
   } catch (err) {
     console.error(`💀 Failed to initialize coach: ${err.message}`);
-    console.error(err.stack);
     process.exit(1);
   }
 }
+
 
 // Execute main function
 main().catch(err => {
